@@ -1,0 +1,11 @@
+g++: warning: util.o: linker input file unused because linking not done
+g++: warning: problem.o: linker input file unused because linking not done
+g++: warning: taxonomy_sgd.o: linker input file unused because linking not done
+g++: warning: BCD.o: linker input file unused because linking not done
+g++: warning: taxonomy.o: linker input file unused because linking not done
+g++: warning: seq_label_sgd.o: linker input file unused because linking not done
+g++: warning: SGD.o: linker input file unused because linking not done
+g++: warning: seq_label.o: linker input file unused because linking not done
+g++: warning: proxGrad.o: linker input file unused because linking not done
+g++: warning: proxLBFGS.o: linker input file unused because linking not done
+g++: warning: OWLQN.o: linker input file unused because linking not done
