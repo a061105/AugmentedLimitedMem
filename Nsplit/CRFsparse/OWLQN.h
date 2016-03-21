@@ -1,0 +1,106 @@
+#pragma once
+
+#include <vector>
+#include <deque>
+#include <iostream>
+#include "problem.h"
+#include "optimizer.h"
+typedef std::vector<double> DblVec;
+
+/*
+   class DifferentiableFunction:public Problem{
+   virtual double Eval(const DblVec& input, DblVec& gradient) = 0;
+   virtual ~DifferentiableFunction() { }
+   };
+   */
+#include "TerminationCriterion.h"
+
+class OWLQN:public optimizer {
+	bool quiet;
+	bool responsibleForTermCrit;
+
+	public:
+	TerminationCriterion *termCrit;
+
+	OWLQN(bool quiet = false) : quiet(quiet) {
+		termCrit = new RelativeMeanImprovementCriterion(5);
+		responsibleForTermCrit = true;
+		m = 10;
+	}
+
+	OWLQN(TerminationCriterion *termCrit, bool quiet = false) : quiet(quiet), termCrit(termCrit) { 
+		responsibleForTermCrit = false;
+	}
+
+	~OWLQN() {
+		if (termCrit && responsibleForTermCrit) delete termCrit;
+	}
+	DblVec minimum;
+	DblVec initial;
+	int m;
+	void minimize(Problem* function);
+	void SetQuiet(bool q) { quiet = q; }
+};
+
+class OptimizerState {
+	friend class OWLQN;
+
+	struct DblVecPtrDeque : public std::deque<DblVec*> {
+		~DblVecPtrDeque() {
+			for (size_t s = 0; s < size(); ++s) {
+				if ((*this)[s] != NULL) delete (*this)[s];
+			}
+		}
+	};
+
+	DblVec x, grad, newX, newGrad, dir;
+	DblVec& steepestDescDir; // references newGrad to save memory, since we don't ever use both at the same time
+	DblVecPtrDeque sList, yList;
+	std::deque<double> roList;
+	std::vector<double> alphas;
+	double value;
+	int iter, m;
+	const size_t dim;
+	Problem* func;
+	double l1weight;
+	bool quiet;
+
+	static double dotProduct(const DblVec& a, const DblVec& b);
+	static void add(DblVec& a, const DblVec& b);
+	static void addMult(DblVec& a, const DblVec& b, double c);
+	static void addMultInto(DblVec& a, const DblVec& b, const DblVec& c, double d);
+	static void scale(DblVec& a, double b);
+	static void scaleInto(DblVec& a, const DblVec& b, double c);
+
+	void MapDirByInverseHessian();
+	void UpdateDir();
+	double DirDeriv() const;
+	void GetNextPoint(double alpha);
+	void BackTrackingLineSearch();
+	void Shift();
+	void MakeSteepestDescDir();
+	double EvalL1();
+	void FixDirSigns();
+	void TestDirDeriv();
+
+	OptimizerState(Problem* f, const DblVec& init, int m, double l1weight, bool quiet) 
+		: x(init), grad(init.size()), newX(init), newGrad(init.size()), dir(init.size()), steepestDescDir(newGrad), alphas(m), iter(1), m(m), dim(init.size()), func(f), l1weight(l1weight), quiet(quiet) {
+			if (m <= 0) {
+				std::cerr << "m must be an integer greater than zero." << std::endl;
+				exit(1);
+			}
+			value = EvalL1();
+			cerr<<"obj val: "<<value<<endl;
+			grad = newGrad;
+		}
+
+	public:
+	const DblVec& GetX() const { return newX; }
+	const DblVec& GetLastX() const { return x; }
+	const DblVec& GetGrad() const { return newGrad; }
+	const DblVec& GetLastGrad() const { return grad; }
+	const DblVec& GetLastDir() const { return dir; }
+	double GetValue() const { return value; }
+	int GetIter() const { return iter; }
+	size_t GetDim() const { return dim; }
+};
