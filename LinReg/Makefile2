@@ -1,2 +1,0 @@
-all:
-	g++ linReg.cpp Matrix.cpp MatrixMath.cpp Operators.cpp -o linReg
