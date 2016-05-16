@@ -55,6 +55,7 @@ class SeqLabelProblem:public Problem{
 			vector<double>& g);//output
     
 	double fun();
+	double fun(vector<Int>& act_set);
 	
     void test_accuracy(const char* output_file);
     

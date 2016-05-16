@@ -17,15 +17,17 @@ class MulticlassProblem:public Problem{
 		//Int raw_d;
 
 		//Functions for "Problem"
-		void compute_fv_change(double* w_change, vector<Int>& act_set, //input
+		void compute_fv_change(double* w_change, vector<Int>& act_set, pair<Int,Int> range, //input
 				vector<pair<Int,double> >& fv_change); //output
 
 		void update_fvalue(vector<pair<Int,double> >& fv_change, double scalar);
 
-		void grad( vector<Int>& act_set, //input
+		void grad( vector<Int>& act_set, pair<Int,Int> range, //input
 				vector<double>& g);//output
 
 		double fun();
+		double fun(vector<Int>& act_set);
+		double fun(Int numBlock, vector< pair<Int,Int> > range, Swapper* swapper);
 
 		void test_accuracy(const char* output_file);
 
@@ -38,7 +40,7 @@ class MulticlassProblem:public Problem{
 		MulticlassProblem(char* data_file);
 		MulticlassProblem(char* model_file, char* data_file);
 
-		Int K; //#labels
+		//Int K; //#labels
 		map<string,Int> label_index_map;
 		map<Int,string> label_name_map;
 		

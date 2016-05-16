@@ -3,6 +3,7 @@
 
 #include<vector>
 #include"util.h"
+#include "Swapper.h"
 
 using namespace std;
 
@@ -15,6 +16,8 @@ class Problem{
 	public:
 		Int N; // number of samples
 		Int d; //number of features
+		Int db;
+		Int K;
 		ValueMap w; // weights, d by 1 array, d is number of features (defined by template)
 		Int n; //number of factors
 		ValueMap fvalue; // factor value, n by 1 array, n is #factor. 
@@ -36,16 +39,18 @@ class Problem{
 		 * in each try. Just calculate function value from new fvalue. 
 		 */
 		//calculate factor value change due to a descent direction, w_change.
-		virtual void compute_fv_change(ValueMap w_change, vector<Int>& act_set, //input
+		virtual void compute_fv_change(ValueMap w_change, vector<Int>& act_set, pair<Int,Int> range, //input
 				vector<pair<Int,double> >& fv_change)=0; //output
 
 		//update new fvalue = fvalue + scalar * fv_change
 		virtual void update_fvalue(vector<pair<Int,double> >& fv_change, double scalar)=0;
 
-		virtual void grad( vector<Int>& act_set, //input
+		virtual void grad( vector<Int>& act_set, pair<Int,Int> range, //input
 				vector<double>& g)=0;//output
 
 		virtual double fun()=0;
+		virtual double fun(vector<Int>& act_set) = 0;
+		virtual double fun(Int numBlock, vector< pair<Int,Int> > range, Swapper* swapper) = 0;
 
 		virtual double train_accuracy() = 0;
 		virtual void test_accuracy(const char* output_file) = 0; //output prediction value to a file while computing acc

@@ -20,6 +20,9 @@ void proxQN::minimize(Problem* prob){
 	Int n = prob->N; //sample size
 	Int db=prob->d;  //dimension
 	ValueMap& w = prob->w; //weights
+	w = new double[db];
+	for(Int i=0;i<db;i++)
+		w[i] = 0.0;
 	
 	Int i;
 	//for(i=0;i<db;i++)
@@ -105,8 +108,10 @@ void proxQN::minimize(Problem* prob){
 	cerr <<setw(6)<<"iter"<<setw(20)<<"time(s)"<<setw(20)<<"objective"<< setw(12)<<"nnz"<<setw(20)<<"train accuracy"<< setw(20) << "l1-norm" <<endl;
 	clock_t start_time = clock();
 	
+	pair<Int,Int> range;
+	range = make_pair(0,db);
 	//initial gradient and objective 
-	prob->grad(act_set,shg);
+	prob->grad(act_set,range,shg);
 	for (i=0;i<db;i++){
 		//g[i] = shg[i] + theta*w[i];
 		g[i] = shg[i];
@@ -201,7 +206,7 @@ void proxQN::minimize(Problem* prob){
 					Bd[j]=0.0;
 				}
 
-				prob->grad(act_set,shg);
+				prob->grad(act_set,range,shg);
 				for (j=0;j<db;j++)
 					//g[j] = shg[j] + theta*w[j];
 					g[j] = shg[j];
@@ -256,7 +261,7 @@ void proxQN::minimize(Problem* prob){
 			j = *ii;
 			delta_part += w_change[j]*g[j];
 		}
-		prob->compute_fv_change(w_change,act_set,fv_change);
+		prob->compute_fv_change(w_change,act_set,range,fv_change);
 
 		prob->update_fvalue(fv_change,alpha);
 
@@ -295,7 +300,7 @@ void proxQN::minimize(Problem* prob){
 		//********** LBFGS update **************
 		// update w,g,s,y,gamma
 
-		prob->grad(act_set,shg);
+		prob->grad(act_set,range,shg);
 		
 		for (i=0;i<act_set.size();i++){ 
 			j = act_set[i];

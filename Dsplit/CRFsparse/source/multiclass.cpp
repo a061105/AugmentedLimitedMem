@@ -31,7 +31,7 @@ MulticlassProblem::MulticlassProblem(char* model_file, char* data_file){
 }
 
 //Functions for "Problem" Interface
-void MulticlassProblem::compute_fv_change(double* w_change, vector<Int>& act_set, //input
+void MulticlassProblem::compute_fv_change(double* w_change, vector<Int>& act_set, pair<Int,Int> range, //input
 		vector<pair<Int,double> >& fv_change){ //output
 
 	double delta_w;
@@ -47,14 +47,14 @@ void MulticlassProblem::compute_fv_change(double* w_change, vector<Int>& act_set
 	Int i;
 	Int fv_index;
 	Int label;
-	pair<Int,double>* pair;
 	for(i=0; i<act_set.size();i++){
 
 		w_index = act_set[i];
 		delta_w = w_change[ w_index ];
-		label = w_index % K;
+		//cerr << "w_index = " << w_index << ", delta_w = " << delta_w << endl;
+		label = (w_index + range.first)% K;
 		//find factors(w_index)
-		feature = &(data_inv[ w_index/K ]);
+		feature = &(data_inv[ (w_index+range.first)/K ]);
 		for(it=feature->begin();it!=feature->end();it++){
 			
 			fv_index = it->first + label;
@@ -74,7 +74,7 @@ void MulticlassProblem::compute_fv_change(double* w_change, vector<Int>& act_set
 
 void MulticlassProblem::update_fvalue(vector<pair<Int,double> >& fv_change, double scalar){
 	
-	sample_updated.clear();
+	//sample_updated.clear();
 	
 	Int prev_factor = -1, factor;
 	vector<pair<Int,double> >::iterator it;
@@ -83,11 +83,11 @@ void MulticlassProblem::update_fvalue(vector<pair<Int,double> >& fv_change, doub
 		fvalue[it->first] += scalar * it->second;
 		
 		//record which samples have been updated
-		factor = it->first/K;
-		if( factor != prev_factor ){
-			sample_updated.insert(factor);
-		}
-		prev_factor = factor;
+		//factor = it->first/K;
+		//if( factor != prev_factor ){
+		//	sample_updated.insert(factor);
+		//}
+		//prev_factor = factor;
 	}
 	
 	inferMarg();
@@ -99,21 +99,24 @@ void MulticlassProblem::inferMarg(){
 	double logf_xy_max;
 	for(Int i=0;i<N;i++){
 
-		if( sample_updated.find(i) == sample_updated.end() ){
-			continue;
-		}
+		//if( sample_updated.find(i) == sample_updated.end() ){
+		//	continue;
+		//}
 		double* f_xy = factor_xy[i];
 		double* marg = marginal[i];
 		
 		logf_xy_max = maximum(f_xy,K);
 		for(Int k=0;k<K;k++)
 			marg[k] = exp(f_xy[k]-logf_xy_max);
+		//for(Int k=0;k<K;k++)
+		//	marg[k] = exp(f_xy[k]);
 		
 		logZ += normalize(marg,K) + logf_xy_max;
+		//logZ += normalize(marg,K);
 	}
 }
 
-void MulticlassProblem::grad( vector<Int>& act_set, //input
+void MulticlassProblem::grad( vector<Int>& act_set, pair<Int,Int> range, //input
 		vector<double>& grad){ //output
 
 	grad.clear();
@@ -127,8 +130,8 @@ void MulticlassProblem::grad( vector<Int>& act_set, //input
 	for(ind=0; ind<act_set.size(); ind++){
 		
 		w_index = act_set[ind];
-		fea_index = w_index / K ;
-		w_label = w_index % K;
+		fea_index = (w_index + range.first) / K ;
+		w_label = (w_index + range.first) % K;
 		
 		feature = &(data_inv[fea_index]);
 		
@@ -138,7 +141,7 @@ void MulticlassProblem::grad( vector<Int>& act_set, //input
 			
 			sample_index = (it->first/K);
 			label = labels[sample_index];
-			
+
 			//loss derivative
 			if( w_label == label ){
 				loss_deriv = marginal[sample_index][w_label] - 1.0;
@@ -170,6 +173,54 @@ double MulticlassProblem::fun(){
 	double w_uni_norm_sq=0.0;
 	for(Int j=0;j<d;j++)
 		w_uni_norm_sq += w[j]*w[j];
+	
+	//cerr << logZ << " - " << log_pot_i << endl;
+	
+	return nll + param.theta*w_uni_norm_sq/2.0 ;
+}
+
+double MulticlassProblem::fun(vector<Int>& act_set){
+
+	double** f_xy;
+	double nll = 0.0;
+	for(Int i=0;i<N;i++){
+		
+		//log potential of i-th instance
+		nll += -factor_xy[i][ labels[i] ];
+	}
+	nll += logZ;
+	//cerr << logZ << " - " << log_pot_i << endl;
+	
+	double w_uni_norm_sq=0.0;
+	for(Int j=0;j<act_set.size();j++)
+		w_uni_norm_sq += w[act_set[j]]*w[act_set[j]];
+	
+	//cerr << logZ << " - " << log_pot_i << endl;
+	
+	return nll + param.theta*w_uni_norm_sq/2.0 ;
+}
+/** For block coordinate descent, compute function value for all block
+ */
+double MulticlassProblem::fun(Int numBlock, vector< pair<Int,Int> > range, Swapper* swapper){
+
+	double** f_xy;
+	double nll = 0.0;
+	for(Int i=0;i<N;i++){
+		
+		//log potential of i-th instance
+		nll += -factor_xy[i][ labels[i] ];
+	}
+	nll += logZ;
+	//cerr << logZ << " - " << log_pot_i << endl;
+	
+	double w_uni_norm_sq=0.0;
+	for(Int block=0;block<numBlock;block++) {
+		swapper->load(block, w, range[block].second-range[block].first, "w");
+		for(Int j=range[block].first;j<range[block].second;j++) {
+			Int jj = j-range[block].first;
+			w_uni_norm_sq += w[jj]*w[jj];
+		}
+	}
 	
 	//cerr << logZ << " - " << log_pot_i << endl;
 	
@@ -356,15 +407,23 @@ void MulticlassProblem::readProblem(char* data_file){
 		raw_d = max_index;
 	}
 	d = (1+raw_d)*K;
-	
-	w = new double[d];
-	for(Int i=0;i<d;i++)
-		w[i] = 0.0;
-	
+	cerr << "d = " << d << ", n = " << N << ", K = " << K << endl;
+	cerr << "raw_d = "<< raw_d+1 << endl;
+
+
 	/*Build data inverted index
 	*/
+	cerr << "build data inverted index" << endl;
 	build_data_inv();
+	cerr << "build data inverted index" << endl;
 	
+	Int numBlock = 10;
+	db = ((raw_d+1)/numBlock + (raw_d+1)% numBlock)*K;
+	cerr << "db = " << db << endl;
+	//w = new double[d];
+	//for(Int i=0;i<d;i++)
+	//	w[i] = 0.0;
+
 	/*Build Factor Table Array
 	*/
 	n = N*K;

@@ -28,6 +28,7 @@ class PseudoSeqLabelProblem:public Problem{
 		double collect_grad( Int w_label, Feature* fea );
 
 		double fun();
+		double fun(vector<Int>& act_set);
 
 		void test_accuracy(const char* output_file);
 

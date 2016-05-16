@@ -82,14 +82,14 @@ int main(int argc, char** argv){
             cerr<<"Multiclass classifiction."<<endl;
 	    prob = new MulticlassProblem(model_file, test_file);
 	    break;
-        case 1:
+        /*case 1:
             cerr<<"Sequence labeling"<<endl;
             prob = new SeqLabelProblem(model_file, test_file);
             break;
        case 2:
             cerr<<"Hierarchical classification."<<endl;
             prob = new TaxonomyProblem(model_file, test_file);     
-            break;
+            break;*/
        case 3:
             cerr<<"sequence alignment not ready"<<endl;
             exit(0);

@@ -119,10 +119,11 @@ double normalize(double* values, Int size){
 	for(Int i=0;i<size;i++){
 		sum += values[i];
 	}
-	for(Int i=0;i<size;i++){
-		values[i] /= sum;
+	if(sum != 0.0) {
+		for(Int i=0;i<size;i++){
+			values[i] /= sum;
+		}
 	}
-	
 	return log(sum);
 }
 

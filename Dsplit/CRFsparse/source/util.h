@@ -28,7 +28,7 @@ ValueMap createValueMap(Int cap);
 typedef double** ArrMap;
 ArrMap createArrMap(Int cap);
 
-
+const int PATH_LENGTH = 1000;
 
 const Int MAX_LINE = 500000000; //max char in a line in a file
 const Int FNAME_LENGTH = 10000;//max length of a file name

@@ -498,6 +498,41 @@ double SeqLabelProblem::fun(){
 	
 	return nll + param.theta*w_uni_norm_sq/2.0 + param.theta2*w_bi_norm_sq/2.0;
 }
+double SeqLabelProblem::fun(vector<Int>& act_set){
+
+	double** f_xy;
+	double* f_yy = factor_yy;
+	double log_pot_i;
+	double nll = 0.0;
+	for(Int i=0;i<N;i++){
+
+		//log potential of i-th instance
+		log_pot_i = 0.0;
+		f_xy = factors[i].factor_xy;
+		Seq* seq = &(data[i]);
+
+		log_pot_i = f_xy[0][seq->labels[0]];
+		for(Int t=1; t<seq->T; t++){
+			log_pot_i += (f_yy[ seq->labels[t-1]*numLabel + seq->labels[t] ] + f_xy[ t ][ seq->labels[t] ]);
+		}
+
+		nll +=  -log_pot_i;
+	}
+	nll += logZ;
+	
+	double w_uni_norm_sq=0.0;
+	for(Int j=0;j<bi_offset_w;j++)
+		w_uni_norm_sq += w[j]*w[j];
+	
+	double w_bi_norm_sq=0.0;
+	for(Int j=bi_offset_w; j<d; j++){
+		w_bi_norm_sq += w[j]*w[j];
+	}
+	
+	//cerr << logZ << " - " << log_pot_i << endl;
+	
+	return nll + param.theta*w_uni_norm_sq/2.0 + param.theta2*w_bi_norm_sq/2.0;
+}
 
 void SeqLabelProblem::compute_fvalue(){
 

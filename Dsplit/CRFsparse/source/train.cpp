@@ -18,6 +18,7 @@
 
 #include "optimizer.h"
 #include "proxQN.h"
+#include "BCD.h"
 
 using namespace std;
 
@@ -38,6 +39,9 @@ void exit_with_help(){
     cerr << "-t theta:  L2-regularization for unigram (default 0.0)" << endl;
     cerr << "-2 theta2: L2-regularization for bigram  (default 0.0)" << endl;
     cerr << "-e epsilon: stop criterion (default 1e-2)"<<endl;
+    cerr << "-s solver: (default 0)" << endl;
+    cerr << "	0 -- proxQN" << endl;
+    cerr << "	1 -- block coordinate proxQN" << endl;
     exit(0);
 }
 
@@ -67,6 +71,8 @@ void parse_command_line(int argc, char** argv, char*& train_file){
 		      break;
             case 'e': param.epsilon = atof(argv[i]);
                       break;
+	    case 's': param.solver = atof(argv[i]);
+		      break;
             default:
                       cerr << "unknown option: -" << argv[i-1][1] << endl;
 		      exit(0);
@@ -93,8 +99,17 @@ int main(int argc, char** argv){
     parse_command_line(argc, argv, train_file);
 
     srand(time(NULL));
-    
-    optimizer* opt = new proxQN();
+    optimizer* opt;
+    switch(param.solver) {
+	case 0:
+		cerr << "Use proxQN to solve" << endl;
+    		opt = new proxQN();
+		break;
+	case 1:
+		cerr << "Use BC-proxQN to solve" << endl;
+		opt = new bCD();
+		break;
+    }
     
     Problem* prob;
     switch(param.problem_type){
@@ -102,7 +117,7 @@ int main(int argc, char** argv){
             cerr<<"Multiclass classifiction problem."<<endl;
 	    prob = new MulticlassProblem(train_file);
 	    break;
-        case 1:
+        /*case 1:
             cerr<<"Sequence labeling problem."<<endl<<endl;
             prob = new SeqLabelProblem(train_file);
             break;
@@ -113,7 +128,7 @@ int main(int argc, char** argv){
         case 3:
             cerr<<"Pseudolikelihood Sequence Labeling problem."<<endl;
 	    prob = new PseudoSeqLabelProblem(train_file);
-	    break;
+	    break;*/
         case 4:
             cerr<<"sequence alignment not ready"<<endl;
             exit(0);

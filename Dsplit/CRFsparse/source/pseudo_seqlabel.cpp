@@ -223,6 +223,29 @@ double PseudoSeqLabelProblem::fun(){
 	
 	return nll + param.theta*w_uni_norm_sq/2.0 + param.theta2*w_bi_norm_sq/2.0;
 }
+double PseudoSeqLabelProblem::fun(vector<Int>& act_set){
+
+	double** f_xy;
+	double nll = 0.0;
+	for(Int i=0;i<N;i++){
+		
+		//log potential of i-th instance
+		nll += -factor_xy[i][ labels[i] ];
+	}
+	nll += logZ;
+	//cerr << logZ << " - " << log_pot_i << endl;
+	
+	double w_uni_norm_sq=0.0;
+	for(Int j=0;j<w_bi_offset;j++)
+		w_uni_norm_sq += w[j]*w[j];
+	
+	double w_bi_norm_sq=0.0;
+	for(Int j=w_bi_offset; j<d; j++){
+		w_bi_norm_sq += w[j]*w[j];
+	}
+	
+	return nll + param.theta*w_uni_norm_sq/2.0 + param.theta2*w_bi_norm_sq/2.0;
+}
 
 /** Given a w, compute all factor values.
  */

@@ -41,6 +41,7 @@ class TaxonomyProblem:public Problem{
 			vector<double>& g);//output
 	
     double fun();
+    double fun(vector<Int>& act_set);
     
     double train_accuracy();
 

@@ -339,6 +339,15 @@ double  TaxonomyProblem::fun(){
     }
     return funvalue;
 }
+double  TaxonomyProblem::fun(vector<Int>& act_set){
+    double funvalue = 0.0;
+    Int nn;
+    for (Int i=0;i<N;i++){
+        nn = i*K;
+        funvalue -= log(upMesg[nn+labels[i]]);
+    }
+    return funvalue;
+}
 
 double TaxonomyProblem::train_accuracy(){
     double accuracy = 0.0;
