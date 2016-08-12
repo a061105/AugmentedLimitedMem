@@ -4,25 +4,27 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 
 def main():
-    fp = open('data.proxQN.LSHTC1','r')
+    fp = open('data.proxQN.aloi','r')
     time = []
     fun = []
     for line in fp:
-        line = line.strip().split('\t')
+        line = line.strip().split(' ')
         time.append(line[0])
         fun.append(line[1])
-    fp = open('data.BCD.lshtc1','r')
+    
+    fp = open('data.BCD.1.aloi','r')
     time1 = []
     fun1 = []
     for line in fp:
-        line = line.strip().split('\t')
+        line = line.strip().split(' ')
         time1.append(line[0])
         fun1.append(line[1])
-    fp = open('data.BCD.5.lshtc1','r')
+    
+    fp = open('data.BCD.aloi','r')
     time2 = []
     fun2 = []
     for line in fp:
-        line = line.strip().split('\t')
+        line = line.strip().split(' ')
         time2.append(line[0])
         fun2.append(line[1])
     plt.plot(time,fun,label='proxQN')
@@ -31,6 +33,6 @@ def main():
     plt.legend(loc=1)
     plt.ylabel('objective function')
     plt.xlabel('time(s)')
-    plt.savefig('lshtc1.png')
+    plt.savefig('aloi.png')
 if __name__ == '__main__':
     main()

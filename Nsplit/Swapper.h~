@@ -1,0 +1,188 @@
+#include <fstream>
+#include <cstring>
+#include <iostream>
+#include <stdio.h>
+#include <map>
+
+#include "util.h"
+
+using namespace std;
+
+void readMeta(char* data_dir, vector<char*>& dataFiles, int& N, int& D, int& L){
+	
+	char path[PATH_LENGTH];
+	sprintf(path, "%s/meta", data_dir);
+	ifstream meta_fin(path);
+	
+	int K; //number of blocks
+	meta_fin >> K >> N >> D >> L;
+	char fname[PATH_LENGTH];
+	for(int i=0;i<K;i++){
+		meta_fin >> fname;
+		dataFiles.push_back(new char[PATH_LENGTH]);
+		sprintf( dataFiles[i], "%s/%s", data_dir, fname );
+	}
+	meta_fin.close();
+}
+
+void writeArr(char* fname, double* arr, int size){
+	
+	FILE* pFile;
+	pFile = fopen(fname,"wb");
+	
+	vector<int> nzIndex;
+	for(int i=0;i<size;i++){
+		if( arr[i] != 0.0 ){
+			nzIndex.push_back(i);
+		}
+	}
+	
+	int nnz = nzIndex.size();
+	fwrite( &nnz, sizeof(int), 1, pFile);
+	for(int i=0;i<nnz;i++){
+		int r= nzIndex[i];
+		fwrite( &r, sizeof(int), 1, pFile);
+		fwrite( &(arr[r]), sizeof(double), 1, pFile);
+	}
+	fclose(pFile);
+}
+
+void readArr(char* fname, double* arr, int size){
+	
+	FILE* pFile;
+	pFile = fopen(fname,"rb");
+	if( pFile == NULL ){
+		for(int i=0;i<size;i++)
+			arr[i] = 0.0;
+		return ;
+	}
+
+	for(int i=0;i<size;i++){
+		arr[i] = 0.0;
+	}
+	
+	int nnz,r;
+	double v;
+	fread(&nnz,sizeof(int),1,pFile);
+	for(int i=0;i<nnz;i++){
+		fread(&r,sizeof(int),1,pFile);
+		fread(&v,sizeof(double),1,pFile);
+		arr[r] = v;
+	}
+	fclose(pFile);
+}
+
+class Swapper{
+	public:
+		int K;
+		int N;
+		int D;
+		int L;
+		char* tmp_model_dir;
+		vector<char*> data_fname_arr;
+		char** fname_arr;
+		
+		Subsolver** solver_arr ;
+		
+		Swapper(char* dir, char* cmd){
+			
+			readMeta(dir, data_fname_arr, N, D, L);
+			K = data_fname_arr.size();
+			fname_arr = new char*[K];
+			
+			//crate tmp model directory
+			tmp_model_dir = new char[PATH_LENGTH];
+			time_t now;
+			time(&now);
+			sprintf(tmp_model_dir,"tmp_info.%d",now);
+			char tmp_cmd[PATH_LENGTH];
+			sprintf(tmp_cmd,"mkdir %s",tmp_model_dir);
+			system(tmp_cmd);
+			
+			for(int i=0;i<K;i++){
+				
+				fname_arr[i] = new char[PATH_LENGTH];
+				
+				sprintf(fname_arr[i], "%s/", tmp_model_dir);
+			}
+			
+			solver_arr = new Subsolver*[K];
+			for(int i=0;i<K;i++){
+
+				solver_arr[i] = create_subsolver(cmd,D,L);
+			}
+		}
+		
+		
+		~Swapper(){
+			
+			char tmp[1000];
+			sprintf(tmp,"rm -rf %s",tmp_model_dir);
+			system(tmp);
+			
+			for(int i=0;i<K;i++){
+				
+				delete[] fname_arr[i];
+				delete[] data_fname_arr[i];
+				
+				delete solver_arr[i];
+			}
+			delete[] fname_arr;
+		}
+		
+		void save(int k, int D, map<char*, double*> info, Subsolver*& sub);
+		void load(int k_new, int D, map<char*, double*> info, Subsolver*& sub);
+		
+		void save(int k, int D, map<char*, double*> info);
+		void load(int k_new, int D, map<char*, double*> info);
+		
+		int model_dim(){
+			return D;
+		}
+		int num_block(){
+			return K;
+		}
+		Subsolver* getSolver(int k){
+			return solver_arr[k];
+		}
+};
+
+void Swapper::save(int k, int D, map<char*, double*> info, Subsolver*& sub){
+
+	for( map<char*, double*>::iterator i=info.begin();i!=info.end();i++) {
+		sprintf(fname_arr[k], "%s/%s.%d", tmp_model_dir, i->first, k);
+		writeArr( fname_arr[k], i->second, D );
+	}
+	sub->release();
+}
+
+void Swapper::load(int k_new, int D, map<char*, double*> info, Subsolver*& sub){
+	
+	//Swap k_new block into memory
+	for(map<char*, double*>::iterator i=info.begin();i!=info.end();i++) {
+		sprintf(fname_arr[k_new], "%s/%s.%d", tmp_model_dir, i->first, k_new);
+		readArr( fname_arr[k_new], i->second, D );
+	}
+	
+	//new solver load datad
+	sub = solver_arr[k_new]; 
+	sub->load( data_fname_arr[k_new] );
+}
+
+void Swapper::save(int k, int D, map<char*, double*> info){
+	
+	//Swap current block into disk
+	for(map<char*, double*>::iterator i=info.begin();i!=info.end();i++) {
+		sprintf(fname_arr[k], "%s/%s.%d", tmp_model_dir, i->first, k);
+		writeArr( fname_arr[k], i->second, D );
+	}
+}
+
+void Swapper::load(int k_new, int D, map<char*, double*> info){
+	
+	//Swap k_new block into memory
+	for(map<char*, double*>::iterator i=info.begin();i!=info.end();i++) {
+		sprintf(fname_arr[k_new], "%s/%s.%d", tmp_model_dir, i->first, k_new);
+		readArr( fname_arr[k_new], i->second, D );
+	}
+}

@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdarg.h>
 #include <locale.h>
+#include <time.h>
+#include <assert.h>
 #include "linear.h"
 #include "tron.h"
 typedef signed char schar;
@@ -479,8 +481,8 @@ Solver_MCSVM_CS::Solver_MCSVM_CS(const problem *prob, int nr_class, double *weig
 	this->eps = eps;
 	this->max_iter = max_iter;
 	this->prob = prob;
-	this->B = new double[nr_class];
-	this->G = new double[nr_class];
+	this->B = new double[(long)nr_class];
+	this->G = new double[(long)nr_class];
 	this->C = weighted_C;
 }
 
@@ -550,6 +552,8 @@ void Solver_MCSVM_CS::Solve(double *w)
 	int *active_size_i = new int[l];
 	double eps_shrink = max(10.0*eps, 1.0); // stopping tolerance for shrinking
 	bool start_from_all = true;
+	clock_t start_time = clock();
+	FILE *fp = fopen("temp","w");
 
 	// Initial alpha can be set here. Note that 
 	// sum_m alpha[i*nr_class+m] = 0, for all i=1,...,l-1
@@ -607,9 +611,11 @@ void Solver_MCSVM_CS::Solve(double *w)
 				feature_node *xi = prob->x[i];
 				while(xi->index!= -1)
 				{
-					double *w_i = &w[(xi->index-1)*nr_class];
+					double *w_i = &w[(long long)(xi->index-1)*(long long)nr_class];
 					for(m=0;m<active_size_i[i];m++)
+					{
 						G[m] += w_i[alpha_index_i[m]]*(xi->value);
+					}
 					xi++;
 				}
 
@@ -682,7 +688,7 @@ void Solver_MCSVM_CS::Solve(double *w)
 				xi = prob->x[i];
 				while(xi->index != -1)
 				{
-					double *w_i = &w[(xi->index-1)*nr_class];
+					double *w_i = &w[(long long)(xi->index-1)*(long long)nr_class];
 					for(m=0;m<nz_d;m++)
 						w_i[d_ind[m]] += d_val[m]*xi->value;
 					xi++;
@@ -716,14 +722,16 @@ void Solver_MCSVM_CS::Solve(double *w)
 		for(i=0;i<w_size*nr_class;i++)
 			v += w[i]*w[i];
 		v = 0.5*v;
-		info("1/2*w*w = %lf,", v);
+		//info("1/2*w*w = %lf,", v);
 		for(i=0;i<l*nr_class;i++)
 		{
 			v += alpha[i];
 		}
 		for(i=0;i<l;i++)
 			v -= alpha[i*nr_class+(int)prob->y[i]];
-		info("Objective value = %lf\n",v);
+		clock_t cur_time = clock();
+		info("iter = %d, time = %lf, Objective value = %lf\n", iter, (double)(cur_time-start_time)/CLOCKS_PER_SEC, v);
+		fprintf(fp, "%lf %lf\n", (double)(cur_time-start_time)/CLOCKS_PER_SEC, v);
 	}
 
 	info("\noptimization finished, #iter = %d\n",iter);
@@ -747,6 +755,7 @@ void Solver_MCSVM_CS::Solve(double *w)
 		v -= alpha[i*nr_class+(int)prob->y[i]];
 	info("Objective value = %lf\n",v);
 	info("nSV = %d\n",nSV);
+	fclose(fp);
 
 	delete [] alpha;
 	delete [] alpha_new;
@@ -2335,8 +2344,9 @@ model* train(const problem *prob, const parameter *param)
 		problem sub_prob;
 		sub_prob.l = l;
 		sub_prob.n = n;
-		sub_prob.x = Malloc(feature_node *,sub_prob.l);
+		sub_prob.x = Malloc(feature_node *,(long)sub_prob.l);
 		sub_prob.y = Malloc(double,sub_prob.l);
+		assert(sub_prob.x != NULL);
 
 		for(k=0; k<sub_prob.l; k++)
 			sub_prob.x[k] = x[k];
@@ -2344,7 +2354,9 @@ model* train(const problem *prob, const parameter *param)
 		// multi-class svm by Crammer and Singer
 		if(param->solver_type == MCSVM_CS)
 		{
-			model_->w=Malloc(double, n*nr_class);
+			model_->w=Malloc(double, (long long)(n)*(long long)(nr_class));
+			//model_->w = (double *)malloc(sizeof(double)*(long)(n*nr_class));
+			assert(model_->w != NULL);
 			for(i=0;i<nr_class;i++)
 				for(j=start[i];j<start[i]+count[i];j++)
 					sub_prob.y[j] = i;

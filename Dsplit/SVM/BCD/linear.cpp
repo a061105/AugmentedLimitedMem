@@ -541,58 +541,97 @@ void Solver_MCSVM_CS::Solve(double *w)
 {
 	int i, m, s;
 	int iter = 0;
-	double *alpha =  new double[l*nr_class];
+	int numalphaBlock = 10;
+	int alphaBlocksize = (l-1)/numalphaBlock + 1;
+	double *alpha =  new double[nr_class*alphaBlocksize];
 	double *alpha_new = new double[nr_class];
-	double *alpha_t = new double[l*nr_class];
+	double *alpha_t = new double[nr_class*alphaBlocksize];
 	int *index = new int[l];
 	double *QD = new double[l];
 	int *d_ind = new int[nr_class];
 	double *d_val = new double[nr_class];
-	int *alpha_index = new int[nr_class*l];
+	int *alpha_index = new int[nr_class*alphaBlocksize];
 	int *y_index = new int[l];
 	int active_size = l;
 	int *active_size_i = new int[l];
 	double eps_shrink = max(10.0*eps, 1.0); // stopping tolerance for shrinking
 	bool start_from_all = true;
-	int max_inner_iter = 10;
+	int max_inner_iter = 15;
 	int numBlock = 10;
-	int db = prob->n/numBlock + prob->n%numBlock;
+	int db = (prob->n-1)/numBlock + 1;
 	double rho = 1;
 	fprintf(stderr,"ori d = %d,new d = %d, K = %d\n", prob->n, db, nr_class);
-	Swapper* swapper = new Swapper(numBlock);
+	fprintf(stderr,"ori n = %d,block n = %d\n", l, alphaBlocksize);
+	fprintf(stderr, "alpha size = %d\n", nr_class*alphaBlocksize);
+	Swapper* swapper = new Swapper(numBlock, true);
+	Swapper* alpha_swapper = new Swapper(numalphaBlock, false);
+	int *block_index = new int[numalphaBlock];
+	for(i=0;i<numalphaBlock;i++)
+		block_index[i] = i;
+	//Swapper* alpha_swapper = new Swapper(l, false);
+	//Swapper* alpha_index_swapper = new Swapper(l, false);
 	std::vector<std::pair<int,int> >range;
-	int j;
-	for(i = 0,j = 0;i < numBlock;i++) {
+	FILE *fp = fopen("temp","w");
+
+	clock_t start_time = clock();
+	long long jj = 0;
+	for(i = 0,jj = 0;i < numBlock;i++) {
 		if(i != numBlock - 1) {
-			range.push_back(std::make_pair(j, j + prob->n/numBlock));
-			j += prob->n/numBlock;
+			range.push_back(std::make_pair(jj, jj + db));
+			jj += db;
 		}
 		else {
-			range.push_back(std::make_pair(j, prob->n));
+			range.push_back(std::make_pair(jj, prob->n));
 		}
 	}
-	double *mux = new double[l*nr_class];
-	for(i = 0;i < l*nr_class;i++)
+	double *mux = new double[nr_class*alphaBlocksize];
+	for(i = 0;i < nr_class*alphaBlocksize;i++)
 		mux[i] = 0.0;
-	double *ax = new double[db*nr_class];
+	std::vector<int> alpha_range;
+	alpha_range.push_back(0);
+	for(i=0,m=0;i<numalphaBlock;i++)
+	{
+		if(i != numalphaBlock - 1)
+		{
+			alpha_range.push_back(m + alphaBlocksize);
+			m += alphaBlocksize;
+		}
+		else
+		{
+			alpha_range.push_back(l);
+		}
+	}
 
 	// Initial alpha can be set here. Note that 
 	// sum_m alpha[i*nr_class+m] = 0, for all i=1,...,l-1
 	// alpha[i*nr_class+m] <= C[GETI(i)] if prob->y[i] == m
 	// alpha[i*nr_class+m] <= 0 if prob->y[i] != m
 	// If initial alpha isn't zero, uncomment the for loop below to initialize w
-	for(i=0;i<l*nr_class;i++)
+	for(i=0;i<nr_class*alphaBlocksize;i++)
 	{
-		alpha[i] = 0;
-		alpha_t[i] = 0;
+		alpha[i] = 0.0;
 	}
-
-	for(i=0;i<db*nr_class;i++)
-		w[i] = 0;
-	for(i=0;i<l;i++)
+	for(i=0;i<nr_class*alphaBlocksize;i++)
+	{
+		alpha_t[i] = 0.0;
+	}
+	for(i=0;i<alphaBlocksize;i++)
 	{
 		for(m=0;m<nr_class;m++)
 			alpha_index[i*nr_class+m] = m;
+	}
+	for(int alphablock = 0;alphablock < numalphaBlock;alphablock++)
+	{
+		alpha_swapper->save(alphablock, alpha_index, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "alpha_index");
+	}
+
+	for(jj=0;jj<(long long)db*(long long)nr_class;jj++)
+		w[jj] = 0;
+	for(i=0;i<l;i++)
+	{
+		//for(m=0;m<nr_class;m++)
+		//	alpha_index[i*nr_class+m] = m;
+		//alpha_swapper->save(i, alpha_index, nr_class, "alpha_index");
 		feature_node *xi = prob->x[i];
 		QD[i] = 0;
 		while(xi->index != -1)
@@ -609,28 +648,33 @@ void Solver_MCSVM_CS::Solve(double *w)
 		y_index[i] = (int)prob->y[i];
 		index[i] = i;
 	}
+	max_iter = 600;
 	while(iter < max_iter)
 	{
 		for(int block = 0;block < numBlock;block++)
 		{
-			swapper->load(block, w, nr_class*(range[block].second-range[block].first), "w");
-			for(i=0;i<l;i++)
+			swapper->load(block, w, (long long)nr_class*(long long)(range[block].second-range[block].first), "w");
+			for(int alphablock = 0;alphablock < numalphaBlock;alphablock++)
 			{
-				feature_node *xi = prob->x[i];
-				xi = prob->x[i];
-				while(xi->index!= -1)
+				alpha_swapper->load(alphablock, mux, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "mux");
+				for(i=0;i<(alpha_range[alphablock+1]-alpha_range[alphablock]);i++)
 				{
-					if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
+					feature_node *xi = prob->x[i+alpha_range[alphablock]];
+					while(xi->index!= -1)
 					{
-						double *w_i = &w[((xi->index-1)-range[block].first)*nr_class];
-						for(m=0;m<nr_class;m++)
+						if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
 						{
-							mux[i*nr_class+m] += w_i[m]*(xi->value);
-						}
+							double *w_i = &w[(long long)((xi->index-1)-range[block].first)*(long long)nr_class];
+							for(m=0;m<nr_class;m++)
+							{
+								mux[i*nr_class+m] += w_i[m]*(xi->value);
+							}
 
+						}
+						xi++;
 					}
-					xi++;
 				}
+				alpha_swapper->save(alphablock, mux, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "mux");
 			}
 			double stopping = -INF;
 			active_size = l;
@@ -638,165 +682,194 @@ void Solver_MCSVM_CS::Solve(double *w)
 			{
 				active_size_i[i] = nr_class;
 			}
-			for(i=0;i<(range[block].second-range[block].first)*nr_class;i++)
-				ax[i] = 0;
-			for(i=0;i<l;i++)
+			for(long long i=0;i<(long long)(range[block].second-range[block].first)*(long long)nr_class;i++)
+				w[i] = 0;
+			for(int alphablock = 0;alphablock < numalphaBlock;alphablock++)
 			{
-				feature_node *xi = prob->x[i];
-				while(xi->index!= -1)
+				alpha_swapper->load(alphablock, alpha, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "alpha");
+				for(i=0;i<(alpha_range[alphablock+1]-alpha_range[alphablock]);i++)
 				{
-					if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
-					{
-						for(m=0;m<nr_class;m++)
-						{
-							ax[((xi->index-1)-range[block].first)*nr_class+m] += alpha[i*nr_class+m]*(xi->value);
-						}
-					}
-					xi++;
-				}
-			}
-			for(i=0;i<(range[block].second-range[block].first)*nr_class;i++)
-			{
-				w[i] = ax[i];
-			}
-			for(int inner_iter = 0;inner_iter < max_inner_iter;inner_iter++)
-			{
-				for(i=0;i<active_size;i++)
-				{
-					int j = i+rand()%(active_size-i);
-					swap(index[i], index[j]);
-				}
-				for(s=0;s<active_size;s++)
-				{
-					i = index[s];
-					double Ai = QD[i];
-					double *alpha_i = &alpha[i*nr_class];
-					int *alpha_index_i = &alpha_index[i*nr_class];
-
-					Ai = 0;
-					feature_node *xi = prob->x[i];
+					feature_node *xi = prob->x[i+alpha_range[alphablock]];
 					while(xi->index!= -1)
 					{
 						if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
 						{
-							Ai += xi->value*xi->value;
+							for(m=0;m<nr_class;m++)
+							{
+								w[(long long)(((xi->index-1)-range[block].first))*(long long)nr_class+m] += alpha[i*nr_class+m]*(xi->value);
+							}
 						}
 						xi++;
 					}
-
-					if(Ai > 0)
+				}
+			}
+			for(int inner_iter = 0;inner_iter < max_inner_iter;inner_iter++)
+			{
+				/*for(i=0;i<active_size;i++)
+				{
+					int j = i+rand()%(active_size-i);
+				  	swap(index[i], index[j]);
+				}*/
+				for(i=0;i<numalphaBlock;i++)
+				{
+					int j = i+rand()%(numalphaBlock-i);
+				  	swap(block_index[i], block_index[j]);
+				}
+				for(int alphablock = 0;alphablock < numalphaBlock;alphablock++)
+				{
+					int block_now = block_index[alphablock];
+					for(i=0;i<(alpha_range[block_now+1]-alpha_range[block_now]);i++)
 					{
-						for(m=0;m<active_size_i[i];m++)
-							G[m] = 1;
-						if(y_index[i] < active_size_i[i])
-							G[y_index[i]] = 0;
+						s = i+alpha_range[block_now];
+						int j = s+rand()%(alpha_range[block_now+1]-alpha_range[block_now]-i);
+						swap(index[s], index[j]);
+					}
+					alpha_swapper->load(block_now, alpha_t, nr_class*(alpha_range[block_now+1]-alpha_range[block_now]), "alpha_t");
+					alpha_swapper->load(block_now, alpha, nr_class*(alpha_range[block_now+1]-alpha_range[block_now]), "alpha");
+					alpha_swapper->load(block_now, mux, nr_class*(alpha_range[block_now+1]-alpha_range[block_now]), "mux");
+					alpha_swapper->load(block_now, alpha_index, nr_class*(alpha_range[block_now+1]-alpha_range[block_now]), "alpha_index");
+					for(s=0;s<(alpha_range[block_now+1]-alpha_range[block_now]);s++)
+					{
+						i = index[s+alpha_range[block_now]];
+						int block_i = i - alpha_range[block_now];
+						if(active_size_i[i] <= 1)
+						{
+							continue;
+						}
+						double Ai = QD[i];
 
-						xi = prob->x[i];
+						double *alpha_i = &alpha[block_i*nr_class];
+						int *alpha_index_i = &alpha_index[block_i*nr_class];
+
+						Ai = 0;
+						feature_node *xi = prob->x[i];
 						while(xi->index!= -1)
 						{
 							if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
 							{
-								double *w_i = &w[((xi->index-1)-range[block].first)*nr_class];
-								for(m=0;m<active_size_i[i];m++)
-									G[m] += w_i[alpha_index_i[m]]*(xi->value);
+								Ai += xi->value*xi->value;
 							}
 							xi++;
 						}
-						for(m=0;m<active_size_i[i];m++)
-						{
-							G[m] -= mux[i*nr_class+alpha_index_i[m]];
-						}
-						for(m=0;m<active_size_i[i];m++)
-						{
-							G[m] += rho*(alpha_i[alpha_index_i[m]]-alpha_t[i*nr_class+alpha_index_i[m]]);
-						}
 
-						double minG = INF;
-						double maxG = -INF;
-						for(m=0;m<active_size_i[i];m++)
+						if(Ai > 0)
 						{
-							if(alpha_i[alpha_index_i[m]] < 0 && G[m] < minG)
-								minG = G[m];
-							if(G[m] > maxG)
-								maxG = G[m];
-						}
-						if(y_index[i] < active_size_i[i])
-							if(alpha_i[(int) prob->y[i]] < C[GETI(i)] && G[y_index[i]] < minG)
-								minG = G[y_index[i]];
+							for(m=0;m<active_size_i[i];m++)
+								G[m] = 1;
+							if(y_index[i] < active_size_i[i])
+								G[y_index[i]] = 0;
 
-						for(m=0;m<active_size_i[i];m++)
-						{
-							if(be_shrunk(i, m, y_index[i], alpha_i[alpha_index_i[m]], minG))
+							xi = prob->x[i];
+							while(xi->index!= -1)
 							{
-								active_size_i[i]--;
-								while(active_size_i[i]>m)
+								if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
 								{
-									if(!be_shrunk(i, active_size_i[i], y_index[i],
-												alpha_i[alpha_index_i[active_size_i[i]]], minG))
-									{
-										swap(alpha_index_i[m], alpha_index_i[active_size_i[i]]);
-										swap(G[m], G[active_size_i[i]]);
-										if(y_index[i] == active_size_i[i])
-											y_index[i] = m;
-										else if(y_index[i] == m)
-											y_index[i] = active_size_i[i];
-										break;
-									}
+									double *w_i = &w[(long long)((xi->index-1)-range[block].first)*(long long)nr_class];
+									for(m=0;m<active_size_i[i];m++)
+										G[m] += w_i[alpha_index_i[m]]*(xi->value);
+								}
+								xi++;
+							}
+							for(m=0;m<active_size_i[i];m++)
+							{
+								G[m] -= mux[block_i*nr_class+alpha_index_i[m]];
+							}
+							for(m=0;m<active_size_i[i];m++)
+							{
+								G[m] += rho*(alpha_i[alpha_index_i[m]]-alpha_t[block_i*nr_class+alpha_index_i[m]]);
+							}
+
+							double minG = INF;
+							double maxG = -INF;
+							for(m=0;m<active_size_i[i];m++)
+							{
+								if(alpha_i[alpha_index_i[m]] < 0 && G[m] < minG)
+									minG = G[m];
+								if(G[m] > maxG)
+									maxG = G[m];
+							}
+							if(y_index[i] < active_size_i[i])
+								if(alpha_i[(int) prob->y[i]] < C[GETI(i)] && G[y_index[i]] < minG)
+									minG = G[y_index[i]];
+
+							for(m=0;m<active_size_i[i];m++)
+							{
+								if(be_shrunk(i, m, y_index[i], alpha_i[alpha_index_i[m]], minG))
+								{
 									active_size_i[i]--;
+									while(active_size_i[i]>m)
+									{
+										if(!be_shrunk(i, active_size_i[i], y_index[i],
+													alpha_i[alpha_index_i[active_size_i[i]]], minG))
+										{
+											swap(alpha_index_i[m], alpha_index_i[active_size_i[i]]);
+											swap(G[m], G[active_size_i[i]]);
+											if(y_index[i] == active_size_i[i])
+												y_index[i] = m;
+											else if(y_index[i] == m)
+												y_index[i] = active_size_i[i];
+											break;
+										}
+										active_size_i[i]--;
+									}
 								}
 							}
-						}
+							//alpha_swapper->save(i, alpha_index, nr_class, "alpha_index");
 
-						if(active_size_i[i] <= 1)
-						{
-							active_size--;
-							swap(index[s], index[active_size]);
-							s--;
-							continue;
-						}
-
-						if(maxG-minG <= 1e-12)
-							continue;
-						else
-							stopping = max(maxG - minG, stopping);
-
-						for(m=0;m<active_size_i[i];m++)
-						{
-							B[m] = G[m] - Ai*alpha_i[alpha_index_i[m]] - rho*alpha_i[alpha_index_i[m]];
-						}
-
-						Ai += rho;
-
-						solve_sub_problem(Ai, y_index[i], C[GETI(i)], active_size_i[i], alpha_new);
-						int nz_d = 0;
-						for(m=0;m<active_size_i[i];m++)
-						{
-							double d = alpha_new[m] - alpha_i[alpha_index_i[m]];
-							alpha_i[alpha_index_i[m]] = alpha_new[m];
-							if(fabs(d) >= 1e-12)
+							/*if(active_size_i[i] <= 1)
 							{
-								d_ind[nz_d] = alpha_index_i[m];
-								d_val[nz_d] = d;
-								nz_d++;
+								active_size--;
+								swap(index[s], index[active_size]);
+								s--;
+								continue;
+							}*/
+
+							if(maxG-minG <= 1e-12)
+								continue;
+							else
+								stopping = max(maxG - minG, stopping);
+
+							for(m=0;m<active_size_i[i];m++)
+							{
+								B[m] = G[m] - Ai*alpha_i[alpha_index_i[m]] - rho*alpha_i[alpha_index_i[m]];
+								//B[m] = G[m] - Ai*alpha_i[alpha_index_i[m]] ;
 							}
-						}
 
-						xi = prob->x[i];
-						while(xi->index != -1)
-						{
-							if(xi->index-1 >= range[block].first && xi->index-1 < range[block].second)
+							Ai += rho;
+
+							solve_sub_problem(Ai, y_index[i], C[GETI(i)], active_size_i[i], alpha_new);
+							int nz_d = 0;
+							for(m=0;m<active_size_i[i];m++)
 							{
-								double *w_i = &w[((xi->index-1)-range[block].first)*nr_class];
-								for(m=0;m<nz_d;m++)
+								double d = alpha_new[m] - alpha_i[alpha_index_i[m]];
+								alpha_i[alpha_index_i[m]] = alpha_new[m];
+								if(fabs(d) >= 1e-12)
 								{
-									w_i[d_ind[m]] += d_val[m]*xi->value;
+									d_ind[nz_d] = alpha_index_i[m];
+									d_val[nz_d] = d;
+									nz_d++;
 								}
 							}
-							xi++;
+
+							xi = prob->x[i];
+							while(xi->index != -1)
+							{
+								if(xi->index-1 >= range[block].first && xi->index-1 < range[block].second)
+								{
+									double *w_i = &w[(long long)((xi->index-1)-range[block].first)*(long long)nr_class];
+									for(m=0;m<nz_d;m++)
+									{
+										w_i[d_ind[m]] += d_val[m]*xi->value;
+									}
+								}
+								xi++;
+							}
+
 						}
 
 					}
-
+					alpha_swapper->save(block_now, alpha, nr_class*(alpha_range[block_now+1]-alpha_range[block_now]), "alpha");
+					alpha_swapper->save(block_now, alpha_index, nr_class*(alpha_range[block_now+1]-alpha_range[block_now]), "alpha_index");
 				}
 			}
 
@@ -817,67 +890,83 @@ void Solver_MCSVM_CS::Solve(double *w)
 			  else
 			  start_from_all = false;*/
 
-			for(i=0;i<l;i++)
+			for(int alphablock = 0;alphablock < numalphaBlock;alphablock++)
 			{
-				feature_node *xi = prob->x[i];
-				xi = prob->x[i];
-				while(xi->index!= -1)
+				alpha_swapper->load(alphablock, mux, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "mux");
+				for(i=0;i<(alpha_range[alphablock+1]-alpha_range[alphablock]);i++)
 				{
-					if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
+					feature_node *xi = prob->x[i+alpha_range[alphablock]];
+					while(xi->index!= -1)
 					{
-						double *w_i = &w[((xi->index-1)-range[block].first)*nr_class];
-						for(m=0;m<nr_class;m++)
-							mux[i*nr_class+m] -= w_i[m]*(xi->value);
+						if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
+						{
+							double *w_i = &w[(long long)((xi->index-1)-range[block].first)*(long long)nr_class];
+							for(m=0;m<nr_class;m++)
+								mux[i*nr_class+m] -= w_i[m]*(xi->value);
+						}
+						xi++;
 					}
-					xi++;
 				}
+				alpha_swapper->save(alphablock, mux, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "mux");
 			}
-			swapper->save(block, w, nr_class*(range[block].second-range[block].first), "w");
+			swapper->save(block, w, (long long)nr_class*(long long)(range[block].second-range[block].first), "w");
+
 		}
 		iter++;
 		if(iter % 10 == 0)
 		{
 			info(".");
 		}
-		for(i=0;i<l*nr_class;i++)
-			alpha_t[i] = alpha[i];
 		double v = 0;
-		double w_ax = 0;
+		for(int alphablock = 0;alphablock < numalphaBlock;alphablock++)
+		{
+			alpha_swapper->load(alphablock, alpha, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "alpha");
+			for(i=0;i<(alpha_range[alphablock+1]-alpha_range[alphablock]);i++)
+			{
+				s = i+alpha_range[alphablock];
+				for(int j=0;j<nr_class;j++)
+				{
+					alpha_t[i*nr_class+j] = alpha[i*nr_class+j];
+					v += alpha[i*nr_class+j];
+				}
+				v -= alpha[i*nr_class+(int)prob->y[s]];
+			}
+			alpha_swapper->save(alphablock, alpha_t, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "alpha_t");
+		}
+		//double w_ax = 0;
 		for(int block = 0;block < numBlock;block++)
 		{
-			swapper->load(block, w, nr_class*(range[block].second-range[block].first), "w");
-			for(i=0;i<(range[block].second-range[block].first)*nr_class;i++)
-				ax[i] = 0;
-			for(i=0;i<l;i++)
+			for(long long i=0;i<((long long)(range[block].second-range[block].first))*(long long)nr_class;i++)
+				w[i] = 0;
+			for(int alphablock = 0;alphablock < numalphaBlock;alphablock++)
 			{
-				feature_node *xi = prob->x[i];
-				while(xi->index!= -1)
+				alpha_swapper->load(alphablock, alpha, nr_class*(alpha_range[alphablock+1]-alpha_range[alphablock]), "alpha");
+				for(i=0;i<(alpha_range[alphablock+1]-alpha_range[alphablock]);i++)
 				{
-					if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
+					feature_node *xi = prob->x[i+alpha_range[alphablock]];
+					while(xi->index!= -1)
 					{
-						for(m=0;m<nr_class;m++)
+						if(xi->index - 1 >= range[block].first && xi->index - 1 < range[block].second)
 						{
-							ax[((xi->index-1)-range[block].first)*nr_class+m] += alpha[i*nr_class+m]*(xi->value);
+							for(m=0;m<nr_class;m++)
+							{
+								w[((long long)((xi->index-1)-range[block].first))*(long long)nr_class+m] += alpha[i*nr_class+m]*(xi->value);
+							}
 						}
+						xi++;
 					}
-					xi++;
 				}
 			}
-			for(i=0;i<(range[block].second-range[block].first)*nr_class;i++)
-				w_ax += (ax[i]-w[i])*(ax[i]-w[i]);
-			for(i=0;i<(range[block].second-range[block].first)*nr_class;i++)
-				v += 0.5*ax[i]*ax[i];
+			for(long long i=0;i<((long long)(range[block].second-range[block].first))*(long long)nr_class;i++)
+				v += 0.5*w[i]*w[i];
 		}
-		if(w_ax != 0)
-			fprintf(stderr,"w-ax = %lf, 1/2*w*w = %lf,", w_ax, v);
-		for(i=0;i<l*nr_class;i++)
-		{
-			v += alpha[i];
-		}
-		for(i=0;i<l;i++)
-			v -= alpha[i*nr_class+(int)prob->y[i]];
-		info("Objective value = %lf\n",v);
+		//fprintf(stderr,"1/2*w*w = %lf,", v);
+		clock_t cur_time = clock();
+
+		info("iter = %d, time = %lf, Objective value = %lf\n", iter, (double)(cur_time-start_time)/CLOCKS_PER_SEC, v);
+		fprintf(fp, "%lf %lf\n", (double)(cur_time-start_time)/CLOCKS_PER_SEC, v);
 	}
+	fclose(fp);
 
 	info("\noptimization finished, #iter = %d\n",iter);
 	if (iter >= max_iter)
@@ -914,7 +1003,6 @@ void Solver_MCSVM_CS::Solve(double *w)
 	delete [] y_index;
 	delete [] active_size_i;
 	delete [] mux;
-	delete [] ax;
 }
 
 // A coordinate descent algorithm for 
@@ -2503,7 +2591,9 @@ model* train(const problem *prob, const parameter *param)
 		// multi-class svm by Crammer and Singer
 		if(param->solver_type == MCSVM_CS)
 		{
-			model_->w=Malloc(double, (n/numBlock+n%numBlock)*nr_class);
+			fprintf(stderr, "w size = %lld(%lld)*%lld = %lld\n", (long long)((n-1)/numBlock+1), (long long)n, (long long)nr_class, (long long)(n/numBlock+n%numBlock)*(long long)nr_class);
+			model_->w=Malloc(double, (long long)((n-1)/numBlock+1)*(long long)nr_class);
+			fprintf(stderr, "%lf\n", model_->w[0]);
 			//model_->w=Malloc(double, n*nr_class);
 			fprintf(stderr, "multi-class svm\n");
 			for(i=0;i<nr_class;i++)

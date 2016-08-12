@@ -12,7 +12,7 @@ class Swapper{
 		char* tmp_model_dir;
 		char** fname_arr;
 		
-		Swapper(int numBlock){
+		Swapper(int numBlock, bool mkdir){
 			
 			K = numBlock;
 			//crate tmp model directory
@@ -21,8 +21,11 @@ class Swapper{
 			time(&now);
 			sprintf(tmp_model_dir,"tmp_info.%d",now);
 			char tmp_cmd[PATH_LENGTH];
-			sprintf(tmp_cmd,"mkdir %s",tmp_model_dir);
-			system(tmp_cmd);
+			if(mkdir == true)
+			{
+				sprintf(tmp_cmd,"mkdir %s",tmp_model_dir);
+				system(tmp_cmd);
+			}
 
 			fname_arr = new char*[K];
 			
@@ -33,7 +36,7 @@ class Swapper{
 				sprintf(fname_arr[i], "%s/", tmp_model_dir);
 			}
 		}
-		
+
 		
 		~Swapper(){
 			
@@ -49,7 +52,12 @@ class Swapper{
 		
 		void save(int k, double* arr, int size, char* name);
 		void load(int k, double* arr, int size, char* name);
+		void save(int k, double* arr, long long size, char* name);
+		void load(int k, double* arr, long long size, char* name);
 		
+		void load(int k, int* arr, int size, char* name);
+		void save(int k, int* arr, int size, char* name);
+
 		int num_block(){
 			return K;
 		}
